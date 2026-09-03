@@ -4,7 +4,7 @@ import argparse,math,time
 from pathlib import Path
 import cv2,numpy as np
 from robot_dashboard.aruco_approach import estimate_pose
-from robot_dashboard.aruco_parking import parking_pose
+from robot_dashboard.aruco_parking import diagonal_intersection,parking_pose
 
 def main():
     p=argparse.ArgumentParser(); p.add_argument("--device",default="/dev/video0"); p.add_argument("--dictionary",default="DICT_6X6_50"); p.add_argument("--marker-size",type=float,default=.16); p.add_argument("--entry-offset",type=float,default=.70); p.add_argument("--horizontal-fov",type=float,default=70.42); p.add_argument("--calibration",type=Path); p.add_argument("--max-reprojection-error",type=float,default=8.); p.add_argument("--marker-hold",type=float,default=.25); p.add_argument("--width",type=int,default=640); p.add_argument("--height",type=int,default=480); p.add_argument("--fps",type=int,default=30); p.add_argument("--seconds",type=float,default=300.); p.add_argument("--display",action="store_true"); a=p.parse_args()
@@ -12,7 +12,7 @@ def main():
     cap=cv2.VideoCapture(a.device,cv2.CAP_V4L2)
     if not cap.isOpened(): p.error("cannot open camera: "+a.device)
     cap.set(cv2.CAP_PROP_FOURCC,cv2.VideoWriter_fourcc(*"MJPG")); cap.set(cv2.CAP_PROP_FRAME_WIDTH,a.width); cap.set(cv2.CAP_PROP_FRAME_HEIGHT,a.height); cap.set(cv2.CAP_PROP_FPS,a.fps); cap.set(cv2.CAP_PROP_BUFFERSIZE,1)
-    detector=cv2.aruco.ArucoDetector(cv2.aruco.getPredefinedDictionary(getattr(cv2.aruco,a.dictionary)),cv2.aruco.DetectorParameters()); k=d=None; start=time.monotonic(); fps_start=start; count=0; shown_fps=0.; smooth=None; tracks={}
+    detector=cv2.aruco.ArucoDetector(cv2.aruco.getPredefinedDictionary(getattr(cv2.aruco,a.dictionary)),cv2.aruco.DetectorParameters()); k=d=None; start=time.monotonic(); fps_start=start; count=0; shown_fps=0.; smooth=None; tracks={}; pixel_tracks={}
     while time.monotonic()-start<a.seconds:
         ok,frame=cap.read()
         if not ok: continue
@@ -28,7 +28,7 @@ def main():
             for cs,mid in zip(corners,ids.reshape(-1)):
                 marker_id=int(mid)
                 if marker_id not in (0,1,2,3): continue
-                detected.add(marker_id); pts=np.asarray(cs).reshape(4,2); pixel=pts.mean(axis=0)
+                detected.add(marker_id); pts=np.asarray(cs).reshape(4,2); pixel=pts.mean(axis=0); pixel_tracks[marker_id]=(now,pixel)
                 cv2.polylines(frame,[np.rint(pts).astype(np.int32).reshape(-1,1,2)],True,(255,0,0),3,cv2.LINE_AA)
                 x,y=pts.min(axis=0); cv2.putText(frame,f"ID {marker_id}",(int(x),max(22,int(y)-6)),cv2.FONT_HERSHEY_SIMPLEX,.65,(255,0,0),2)
                 try:
@@ -38,16 +38,20 @@ def main():
                     if error<=a.max_reprojection_error: tracks[marker_id]=(now,(float(t[0]),float(t[2])),pixel)
                 except (ValueError,cv2.error): pass
         tracks={marker_id:value for marker_id,value in tracks.items() if now-value[0]<=a.marker_hold}
-        positions={marker_id:value[1] for marker_id,value in tracks.items()}; pixels={marker_id:value[2] for marker_id,value in tracks.items()}
-        status=f"DETECTED {len(detected)}/4  VALID POSE {len(positions)}/4  FPS {shown_fps:.1f}"; color=(0,0,255)
-        if len(positions)==4:
+        pixel_tracks={marker_id:value for marker_id,value in pixel_tracks.items() if now-value[0]<=a.marker_hold}
+        positions={marker_id:value[1] for marker_id,value in tracks.items()}; pixels={marker_id:value[1] for marker_id,value in pixel_tracks.items()}
+        status=f"DETECTED {len(detected)}/4  TRACKED {len(pixels)}/4  FPS {shown_fps:.1f}"; color=(0,0,255)
+        if len(pixels)==4:
             try:
-                pose=parking_pose(positions,a.entry_offset); values=np.array([pose.center_x,pose.center_z,pose.yaw,pose.entry_x,pose.entry_z]); smooth=values if smooth is None else .25*values+.75*smooth
                 order=[0,1,3,2]; polygon=np.rint([pixels[i] for i in order]).astype(np.int32).reshape(-1,1,2); cv2.polylines(frame,[polygon],True,(255,0,0),4,cv2.LINE_AA)
-                center=np.mean([pixels[i] for i in range(4)],axis=0); near=(pixels[0]+pixels[1])/2; far=(pixels[2]+pixels[3])/2; direction=far-near; length=np.linalg.norm(direction)
+                cv2.line(frame,tuple(np.rint(pixels[0]).astype(int)),tuple(np.rint(pixels[3]).astype(int)),(255,255,0),2,cv2.LINE_AA); cv2.line(frame,tuple(np.rint(pixels[1]).astype(int)),tuple(np.rint(pixels[2]).astype(int)),(255,255,0),2,cv2.LINE_AA)
+                center=np.asarray(diagonal_intersection(pixels[0],pixels[3],pixels[1],pixels[2])); near=(pixels[0]+pixels[1])/2; far=(pixels[2]+pixels[3])/2; direction=far-near; length=np.linalg.norm(direction)
                 if length>1: direction/=length
                 c=tuple(np.rint(center).astype(int)); cv2.drawMarker(frame,c,(0,255,255),cv2.MARKER_TILTED_CROSS,28,4); cv2.arrowedLine(frame,c,tuple(np.rint(center+direction*70).astype(int)),(0,255,255),4,tipLength=.25)
-                status=f"PARKING FOUND  x={smooth[0]:+.2f}m z={smooth[1]:.2f}m yaw={math.degrees(smooth[2]):+.1f}deg"; color=(0,255,0)
+                status=f"PARKING FOUND  center=({c[0]},{c[1]})px"
+                if len(positions)==4:
+                    pose=parking_pose(positions,a.entry_offset); values=np.array([pose.center_x,pose.center_z,pose.yaw,pose.entry_x,pose.entry_z]); smooth=values if smooth is None else .25*values+.75*smooth; status+=f"  x={smooth[0]:+.2f}m z={smooth[1]:.2f}m yaw={math.degrees(smooth[2]):+.1f}deg"
+                color=(0,255,0)
             except ValueError: status="INVALID PARKING GEOMETRY"
         else: smooth=None
         cv2.rectangle(frame,(0,0),(w,46),(0,0,0),-1); cv2.putText(frame,status,(10,31),cv2.FONT_HERSHEY_SIMPLEX,.62,color,2)

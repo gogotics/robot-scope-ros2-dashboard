@@ -1,5 +1,5 @@
 import math,unittest
-from robot_dashboard.aruco_parking import parking_pose
+from robot_dashboard.aruco_parking import diagonal_intersection,parking_pose
 
 class ParkingPoseTests(unittest.TestCase):
     def test_axis_aligned_bay(self):
@@ -11,5 +11,11 @@ class ParkingPoseTests(unittest.TestCase):
         self.assertAlmostEqual(parking_pose(points).yaw,angle)
     def test_requires_all_ids(self):
         with self.assertRaises(ValueError): parking_pose({0:(0,0)})
+    def test_diagonal_intersection_handles_perspective(self):
+        center=diagonal_intersection((100,100),(360,330),(400,120),(80,350))
+        self.assertGreater(center[0],200); self.assertLess(center[0],260)
+        self.assertGreater(center[1],200); self.assertLess(center[1],260)
+    def test_invalid_diagonals_fail(self):
+        with self.assertRaises(ValueError): diagonal_intersection((0,0),(1,0),(0,1),(1,1))
 
 if __name__=="__main__": unittest.main()

@@ -14,6 +14,19 @@ class ParkingPose:
     width: float
     depth: float
 
+def diagonal_intersection(p0,p3,p1,p2):
+    """Return the pixel intersection of diagonals 0-3 and 1-2."""
+    a=np.asarray(p0,dtype=float).reshape(2); b=np.asarray(p3,dtype=float).reshape(2)
+    c=np.asarray(p1,dtype=float).reshape(2); d=np.asarray(p2,dtype=float).reshape(2)
+    direction0=b-a; direction1=d-c
+    cross=direction0[0]*direction1[1]-direction0[1]*direction1[0]
+    if not math.isfinite(cross) or abs(cross)<1e-6: raise ValueError("parking diagonals are parallel")
+    delta=c-a; t=(delta[0]*direction1[1]-delta[1]*direction1[0])/cross
+    if not 0.0<=t<=1.0: raise ValueError("parking diagonals do not cross inside the bay")
+    point=a+t*direction0
+    if not np.isfinite(point).all(): raise ValueError("parking center is not finite")
+    return float(point[0]),float(point[1])
+
 def parking_pose(points, entry_offset=.70):
     """Compute bay pose from IDs 0=near-left, 1=near-right, 2=far-left, 3=far-right."""
     if set(points) != {0,1,2,3}: raise ValueError("parking pose requires marker IDs 0, 1, 2, and 3")
