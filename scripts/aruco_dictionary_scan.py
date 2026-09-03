@@ -37,7 +37,7 @@ def report(found):
         print(f"{','.join(dictionaries()[value])}: ids={sorted(row['ids'])} unique={len(row['ids'])} hits={row['detections']} variants={sorted(row['variants'])}")
 
 def main():
-    p=argparse.ArgumentParser(); group=p.add_mutually_exclusive_group(required=True); group.add_argument("--image",type=Path); group.add_argument("--device"); p.add_argument("--seconds",type=float,default=15); a=p.parse_args()
+    p=argparse.ArgumentParser(); group=p.add_mutually_exclusive_group(required=True); group.add_argument("--image",type=Path); group.add_argument("--device"); p.add_argument("--seconds",type=float,default=15); p.add_argument("--display",action="store_true",help="show a live preview; q or Esc exits"); a=p.parse_args()
     if a.image:
         frame=cv2.imread(str(a.image));
         if frame is None: p.error(f"cannot read image: {a.image}")
@@ -50,7 +50,17 @@ def main():
         ok,frame=cap.read()
         if not ok: continue
         frames+=1
-        for value,row in scan(frame).items():
+        current=scan(frame)
+        for value,row in current.items():
             aggregate[value]["ids"].update(row["ids"]); aggregate[value]["detections"]+=row["detections"]; aggregate[value]["variants"].update(row["variants"])
-    cap.release(); print(f"source={a.device} frames={frames}"); report(aggregate)
+        if a.display:
+            preview=frame.copy(); lines=["Scanning all ArUco dictionaries"]
+            for value,row in sorted(current.items())[:5]: lines.append(f"{dictionaries()[value][0]} IDs {sorted(row['ids'])}")
+            if len(lines)==1: lines.append("No marker detected - show full marker + white margin")
+            for index,text in enumerate(lines): cv2.putText(preview,text,(12,30+28*index),cv2.FONT_HERSHEY_SIMPLEX,.62,(0,255,0) if index else (0,220,255),2)
+            cv2.imshow("ArUco dictionary scanner",preview)
+            if cv2.waitKey(1)&0xFF in (27,ord("q")): break
+    cap.release()
+    if a.display: cv2.destroyAllWindows()
+    print(f"source={a.device} frames={frames}"); report(aggregate)
 if __name__=="__main__": main()
