@@ -5,6 +5,7 @@ import argparse
 from collections import defaultdict
 from pathlib import Path
 import cv2
+import numpy as np
 
 def dictionaries():
     seen={}
@@ -22,13 +23,16 @@ def variants(frame):
     yield "clahe_2x",cv2.resize(clahe,None,fx=2,fy=2,interpolation=cv2.INTER_CUBIC)
 
 def scan(frame):
-    found=defaultdict(lambda:{"ids":set(),"detections":0,"variants":set()})
+    found=defaultdict(lambda:{"ids":set(),"detections":0,"variants":set(),"boxes":[]})
     for value,names in dictionaries().items():
         detector=cv2.aruco.ArucoDetector(cv2.aruco.getPredefinedDictionary(value),cv2.aruco.DetectorParameters())
         for variant,image in variants(frame):
-            _,ids,_=detector.detectMarkers(image)
+            corners,ids,_=detector.detectMarkers(image)
             if ids is not None:
                 row=found[value]; row["ids"].update(map(int,ids.reshape(-1))); row["detections"]+=len(ids); row["variants"].add(variant)
+                scale=2.0 if variant.endswith("_2x") else 1.0
+                if not row["boxes"]:
+                    row["boxes"]=[(np.asarray(c).reshape(4,2)/scale,int(marker_id)) for c,marker_id in zip(corners,ids.reshape(-1))]
     return found
 
 def report(found):
@@ -45,7 +49,7 @@ def main():
     cap=cv2.VideoCapture(a.device,cv2.CAP_V4L2)
     if not cap.isOpened(): p.error(f"cannot open camera: {a.device}")
     import time
-    aggregate=defaultdict(lambda:{"ids":set(),"detections":0,"variants":set()}); frames=0; start=time.monotonic()
+    aggregate=defaultdict(lambda:{"ids":set(),"detections":0,"variants":set(),"boxes":[]}); frames=0; start=time.monotonic()
     while time.monotonic()-start<a.seconds:
         ok,frame=cap.read()
         if not ok: continue
@@ -54,10 +58,21 @@ def main():
         for value,row in current.items():
             aggregate[value]["ids"].update(row["ids"]); aggregate[value]["detections"]+=row["detections"]; aggregate[value]["variants"].update(row["variants"])
         if a.display:
-            preview=frame.copy(); lines=["Scanning all ArUco dictionaries"]
-            for value,row in sorted(current.items())[:5]: lines.append(f"{dictionaries()[value][0]} IDs {sorted(row['ids'])}")
-            if len(lines)==1: lines.append("No marker detected - show full marker + white margin")
-            for index,text in enumerate(lines): cv2.putText(preview,text,(12,30+28*index),cv2.FONT_HERSHEY_SIMPLEX,.62,(0,255,0) if index else (0,220,255),2)
+            preview=frame.copy(); lines=[]
+            if current:
+                value,row=max(current.items(),key=lambda item:(len(item[1]["boxes"]),len(item[1]["ids"])))
+                dictionary_name=dictionaries()[value][0]
+                for corners,marker_id in row["boxes"]:
+                    points=np.rint(corners).astype(np.int32).reshape((-1,1,2))
+                    cv2.polylines(preview,[points],True,(255,0,0),4,cv2.LINE_AA)
+                    x,y=points.reshape(4,2).min(axis=0)
+                    cv2.putText(preview,f"{dictionary_name} ID {marker_id}",(int(x),max(24,int(y)-8)),cv2.FONT_HERSHEY_SIMPLEX,.6,(255,0,0),2)
+                lines=[f"DETECTED: {dictionary_name} IDs {sorted(row['ids'])}"]
+            else:
+                lines=["NO ARUCO DETECTED"]
+            color=(255,0,0) if current else (0,0,255)
+            cv2.rectangle(preview,(0,0),(preview.shape[1],48),(0,0,0),-1)
+            for index,text in enumerate(lines): cv2.putText(preview,text,(12,32+28*index),cv2.FONT_HERSHEY_SIMPLEX,.72,color,2)
             cv2.imshow("ArUco dictionary scanner",preview)
             if cv2.waitKey(1)&0xFF in (27,ord("q")): break
     cap.release()
