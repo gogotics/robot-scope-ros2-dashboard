@@ -29,23 +29,50 @@ source .venv/bin/activate
 pip install -r requirements.txt -r requirements-crosswalk.txt
 ```
 
-Put the segmentation weights at `weights/best.pt`.  Model weights and recorded
-videos must remain outside Git because they can be large and may have separate
-licensing terms.
+If importing OpenCV reports `libGL.so.1` in Codespaces, install the missing
+runtime library and retry:
 
-Run a recorded-video evaluation:
+```bash
+sudo apt-get update
+sudo apt-get install -y libgl1
+```
+
+The default is Ultralytics YOLOE-26s segmentation with the text prompts
+`crosswalk` and `zebra crossing`, so custom weights are not required for an
+initial test.  Ultralytics downloads the model and text encoder on the first
+run; later runs reuse the cache.
+
+For a smoke test when no Go2 recording is available, download this CC0
+Wikimedia Commons image:
+
+```bash
+curl -L \
+  'https://thumb.wikimedia.org/wikipedia/commons/thumb/a/af/Crossroad-zebra-crossing-crosswalk_%2823698506663%29.jpg/1280px-Crossroad-zebra-crossing-crosswalk_%2823698506663%29.jpg' \
+  -o /tmp/crosswalk-demo.jpg
+```
+
+Run the image smoke test:
+
+```bash
+PYTHONPATH=. python3 scripts/replay_crosswalk_autonomy.py \
+  /tmp/crosswalk-demo.jpg \
+  --output artifacts/crosswalk-demo-shadow.avi \
+  --device cpu
+```
+
+Then run a recorded-video evaluation with your Go2 footage:
 
 ```bash
 PYTHONPATH=. python3 scripts/replay_crosswalk_autonomy.py input.webm \
-  --model weights/best.pt \
   --output artifacts/crosswalk-shadow.avi \
-  --class-name crosswalk \
-  --confidence 0.50 \
-  --device cpu \
-  --crosswalk-width-m 3.0
+  --device cpu
 ```
 
-Use `--device 0` in a CUDA runner.  The command creates:
+Use `--device 0` in a CUDA runner. To use a locally trained model instead, put
+the segmentation weights outside Git and add, for example,
+`--model weights/best.pt --class-name crosswalk --confidence 0.50`. Repeating
+`--class-name` adds accepted class aliases or YOLOE text prompts. The command
+creates:
 
 - an overlay video with the selected mask and centerline;
 - CSV frame decisions with proposed and emitted velocities;
@@ -55,6 +82,15 @@ Use `--device 0` in a CUDA runner.  The command creates:
 
 Every emitted velocity remains zero.  The nonzero `recommended_*` columns are
 for controller tuning only.
+
+YOLOE is a convenient zero-shot baseline, not a validated production detector.
+Its default confidence is intentionally low for offline coverage review. Tune
+the threshold on Go2 recordings, then train or fine-tune a crosswalk model if
+false positives or misses do not meet the acceptance gates.
+
+Ultralytics code and downloaded weights have their own AGPL-3.0 or enterprise
+licensing terms. Review them before a closed-source or commercial Jetson
+deployment; installing an optional dependency does not relicense Robot Scope.
 
 ## Acceptance before Jetson deployment
 

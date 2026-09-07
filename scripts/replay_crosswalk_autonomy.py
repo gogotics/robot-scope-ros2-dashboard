@@ -21,18 +21,39 @@ from robot_dashboard.crosswalk_autonomy import (
     select_crosswalk_mask,
 )
 
+DEFAULT_YOLOE_MODEL = "yoloe-26s-seg.pt"
+DEFAULT_CLASS_NAMES = ("crosswalk", "zebra crossing")
+DOWNLOADABLE_YOLOE_MODELS = frozenset(
+    f"yoloe-26{size}-seg.pt" for size in ("n", "s", "m", "l", "x")
+)
+
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Evaluate crosswalk center tracking on recorded video"
+        description="Evaluate crosswalk center tracking on a recorded image or video"
     )
-    parser.add_argument("video", type=Path)
-    parser.add_argument("--model", type=Path, default=Path("weights/best.pt"))
+    parser.add_argument("video", type=Path, help="recorded image or video input")
+    parser.add_argument(
+        "--model",
+        default=DEFAULT_YOLOE_MODEL,
+        help=(
+            "local segmentation weights or an official YOLOE-26 model name "
+            f"(default: {DEFAULT_YOLOE_MODEL})"
+        ),
+    )
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--confidence", type=float, default=0.50)
-    parser.add_argument("--class-name", default="crosswalk")
+    parser.add_argument("--confidence", type=float, default=0.20)
+    parser.add_argument(
+        "--class-name",
+        dest="class_names",
+        action="append",
+        help=(
+            "accepted class or YOLOE text prompt; repeat for aliases "
+            "(default: crosswalk + zebra crossing)"
+        ),
+    )
     parser.add_argument("--image-size", type=int, default=768)
-    parser.add_argument("--device", default="0")
+    parser.add_argument("--device", default="cpu")
     parser.add_argument("--crosswalk-width-m", type=float, default=3.0)
     return parser
 
@@ -45,20 +66,45 @@ def _class_name(names: object, class_id: int) -> str:
     return ""
 
 
+def _normalized_class_names(values: list[str] | None) -> tuple[str, ...]:
+    source = values if values is not None else list(DEFAULT_CLASS_NAMES)
+    normalized = tuple(dict.fromkeys(value.strip().lower() for value in source if value.strip()))
+    if not normalized:
+        raise ValueError("at least one non-empty --class-name is required")
+    return normalized
+
+
+def _resolve_model(model: str) -> tuple[str, bool]:
+    """Return (model reference, uses YOLOE text prompts)."""
+    candidate = Path(model).expanduser()
+    if candidate.is_file():
+        return str(candidate), candidate.name.lower().startswith("yoloe-")
+    if model.lower() in DOWNLOADABLE_YOLOE_MODELS and Path(model).name == model:
+        return model.lower(), True
+    raise ValueError(
+        f"model not found: {model}. Use a local .pt file or one of: "
+        + ", ".join(sorted(DOWNLOADABLE_YOLOE_MODELS))
+    )
+
+
 def main() -> int:
     args = _parser().parse_args()
     try:
         import cv2  # type: ignore[import-not-found]
-        from ultralytics import YOLO  # type: ignore[import-not-found]
+        from ultralytics import YOLO, YOLOE  # type: ignore[import-not-found]
     except ImportError as exc:
         raise SystemExit(
-            "install optional dependencies with: pip install -r requirements-crosswalk.txt"
+            f"vision dependency import failed: {exc}. "
+            "Install with: pip install -r requirements-crosswalk.txt"
         ) from exc
 
     if not args.video.is_file():
         raise SystemExit(f"video not found: {args.video}")
-    if not args.model.is_file():
-        raise SystemExit(f"model not found: {args.model}")
+    try:
+        class_names = _normalized_class_names(args.class_names)
+        model_reference, uses_yoloe = _resolve_model(args.model)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
     output = args.output.resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
     csv_path = output.with_suffix(".csv")
@@ -78,7 +124,11 @@ def main() -> int:
         capture.release()
         raise SystemExit(f"cannot create output video: {output}")
 
-    model = YOLO(str(args.model))
+    if uses_yoloe:
+        model = YOLOE(model_reference)
+        model.set_classes(list(class_names))
+    else:
+        model = YOLO(model_reference)
     navigator = CrosswalkNavigator(
         CrosswalkPolicyConfig(confidence=args.confidence)
     )
@@ -136,7 +186,7 @@ def main() -> int:
                     raw_masks, raw_confidences, raw_classes
                 ):
                     name = _class_name(result.names, class_id).strip().lower()
-                    if name != args.class_name.strip().lower():
+                    if name not in class_names:
                         continue
                     resized = cv2.resize(
                         raw_mask.astype(np.uint8),
@@ -235,6 +285,8 @@ def main() -> int:
     summary = {
         "mode": "SHADOW",
         "robot_commands_sent": 0,
+        "model": model_reference,
+        "class_names": list(class_names),
         "frames": frame_index,
         "detected_frame_ratio": detected_frames / frame_index if frame_index else 0.0,
         "hold_frame_ratio": hold_frames / frame_index if frame_index else 0.0,

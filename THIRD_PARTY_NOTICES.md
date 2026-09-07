@@ -48,3 +48,9 @@ GPL-2.0-only. Those projects are downloaded and built only when the operator
 requests it; they are not relicensed by Robot Scope's MIT license. Redistributors
 of a full system image must review the exact pinned sources and satisfy all
 applicable source, license and notice obligations.
+
+Ultralytics and its downloaded YOLOE weights are also optional, non-vendored
+runtime components used only by the crosswalk shadow-evaluation script. They
+are offered by their publisher under AGPL-3.0 or a separate enterprise license.
+Before distributing or deploying a combined product, review the current
+Ultralytics terms and select a license compatible with that use.
