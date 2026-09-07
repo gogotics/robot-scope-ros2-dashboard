@@ -32,6 +32,8 @@ rosbag2_*/
 /workspaces/
 /weights/
 /artifacts/
+/yoloe-*.pt
+/mobileclip*.ts
 
 # Local map snapshots are runtime data, not source code.
 robot_dashboard/static/data/go2_saved_map.json
