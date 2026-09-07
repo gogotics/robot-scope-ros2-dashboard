@@ -149,6 +149,12 @@ NIC와 고정 주소를 다시 엄격하게 검사합니다.
 결과만 한 시나리오씩 기록합니다. 자세한 절차와 중단 조건은
 [하드웨어 인수 검증 문서](docs/HARDWARE_ACCEPTANCE.md)를 확인하세요.
 
+횡단보도 segmentation과 중앙선 추종은 먼저 녹화 영상에서 shadow mode로
+검증합니다. 이 단계는 추천 속도만 기록하고 로봇 명령을 전송하지 않습니다.
+설치, 리플레이 결과물, Jetson 이관 전 조건은
+[횡단보도 자율주행 shadow 검증 문서](docs/CROSSWALK_AUTONOMY_SHADOW_GUIDE.md)를
+확인하세요.
+
 ~~~bash
 python3 scripts/robot_scope_acceptance.py --mode go2-nav
 ~~~

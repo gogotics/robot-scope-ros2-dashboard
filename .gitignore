@@ -30,6 +30,8 @@ rosbag2_*/
 # never be published or removed by a Git update.
 /runtime/
 /workspaces/
+/weights/
+/artifacts/
 
 # Local map snapshots are runtime data, not source code.
 robot_dashboard/static/data/go2_saved_map.json

@@ -5,6 +5,15 @@ Robot Scope source code is distributed under the repository's
 their respective upstream licenses. The MIT license does not replace those
 terms.
 
+## Go2 Crosswalk Autonomy
+
+- Upstream: `gogotics/go2-crosswalk-autonomy`
+- Pinned commit: `702c5d002f3ca467584826d4e79f090dc2f37a90`
+- Bundled material: adapted mask geometry and fail-closed navigation policy
+- License: MIT
+- Changes: single-instance selection, boundary clearance, stale-frame hold,
+  explicit exit confirmation, Route Planner projection, and shadow replay
+
 ## Unitree Go2 model
 
 - Upstream: `unitreerobotics/unitree_ros`, `robots/go2_description`
