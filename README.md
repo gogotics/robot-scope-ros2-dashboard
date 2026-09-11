@@ -1158,8 +1158,10 @@ requirements*.txt               runtime 및 분리된 contributor 품질 의존�
 PYTHONPATH=. python3 scripts/tape_parking_camera.py --image /path/to/frame.png
 ~~~
 
-Ubuntu USB 카메라는 아래처럼 실행합니다. 다섯 프레임 연속 검출된 경우에만 화면 상태가
-`STABLE`로 바뀝니다. `q` 또는 Esc로 종료합니다.
+Ubuntu USB 카메라는 아래처럼 실행합니다. 최초 사각형을 검출하면 경계 주변 특징점을
+광학 흐름과 RANSAC homography로 이어서 추적하므로 흔들림, 짧은 가림과 일부 화면 잘림을
+견딥니다. 화면에는 `ACQUIRING`, `DETECTED`, `TRACKED`, `LOST` 상태가 표시됩니다.
+`q` 또는 Esc로 종료합니다.
 
 ~~~bash
 PYTHONPATH=. python3 scripts/tape_parking_camera.py \
@@ -1167,7 +1169,9 @@ PYTHONPATH=. python3 scripts/tape_parking_camera.py \
 ~~~
 
 macOS에서는 `--device 0`을 사용합니다. 기본 검출 문턱은 최소 영상 면적 8%, 신뢰도
-0.42입니다. 현장 조명에 맞춰 조정할 수 있지만, 로봇 이동과 연결하기 전에 카메라
+0.42입니다. 새 검출 없이 추적만 유지하는 상한은 기본 18프레임이며
+`--max-track-frames`로 조정할 수 있습니다. 이 제한 이후에는 오래된 영상 좌표를
+재사용하지 않고 `LOST`로 닫힙니다. 현장 조명에 맞춰 조정할 수 있지만, 로봇 이동과 연결하기 전에 카메라
 캘리브레이션, 실제 주차구역 크기, 로봇 외곽 여유와 검출 상실 시 정지 정책을 별도로
 검증해야 합니다.
 

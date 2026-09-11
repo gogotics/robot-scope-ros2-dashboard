@@ -9,7 +9,11 @@ import time
 
 import cv2
 
-from robot_dashboard.tape_parking import detect_tape_parking_bay, draw_tape_parking_detection
+from robot_dashboard.tape_parking import (
+    TapeParkingTracker,
+    detect_tape_parking_bay,
+    draw_tape_parking_detection,
+)
 
 
 def _camera_source(value: str):
@@ -50,6 +54,8 @@ def main() -> None:
     parser.add_argument("--min-area-ratio", type=float, default=0.08)
     parser.add_argument("--min-confidence", type=float, default=0.42)
     parser.add_argument("--min-black-support", type=float, default=0.10)
+    parser.add_argument("--detect-every", type=int, default=1)
+    parser.add_argument("--max-track-frames", type=int, default=18)
     parser.add_argument("--display", action="store_true")
     args = parser.parse_args()
 
@@ -81,29 +87,36 @@ def main() -> None:
     capture.set(cv2.CAP_PROP_FPS, args.fps)
     capture.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
+    tracker = TapeParkingTracker(
+        detect_every=args.detect_every,
+        max_track_frames=args.max_track_frames,
+        min_area_ratio=args.min_area_ratio,
+        min_confidence=args.min_confidence,
+        min_black_support=args.min_black_support,
+    )
     started = time.monotonic()
-    consecutive = 0
+    stable_frames = 0
     last_state = None
     try:
         while time.monotonic() - started < args.seconds:
             ok, frame = capture.read()
             if not ok:
                 continue
-            detection = detect_tape_parking_bay(
-                frame,
-                min_area_ratio=args.min_area_ratio,
-                min_confidence=args.min_confidence,
-                min_black_support=args.min_black_support,
-            )
-            consecutive = consecutive + 1 if detection else 0
-            stable = detection is not None and consecutive >= 5
-            state = "STABLE" if stable else "CANDIDATE" if detection else "NOT_FOUND"
+            observation = tracker.update(frame)
+            detection = observation.detection
+            stable_frames = stable_frames + 1 if detection else 0
+            stable = detection is not None and stable_frames >= 5
+            state = observation.state if stable else "ACQUIRING" if detection else "LOST"
             if state != last_state:
-                print(f"state={state} {_describe(detection)}", flush=True)
+                print(
+                    f"state={state} tracked_frames={observation.tracked_frames} "
+                    f"inliers={observation.inlier_ratio:.3f} {_describe(detection)}",
+                    flush=True,
+                )
                 last_state = state
             if detection:
                 draw_tape_parking_detection(frame, detection)
-            color = (0, 255, 0) if stable else (0, 165, 255) if detection else (0, 0, 255)
+            color = (0, 255, 0) if state == "DETECTED" else (0, 255, 255) if detection else (0, 0, 255)
             cv2.rectangle(frame, (0, 0), (frame.shape[1], 46), (0, 0, 0), -1)
             cv2.putText(frame, state, (12, 32), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
             if args.display:
