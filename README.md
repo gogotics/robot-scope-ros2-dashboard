@@ -1145,6 +1145,32 @@ requirements*.txt               runtime 및 분리된 contributor 품질 의존�
 확인합니다. `docs/ARCHITECTURE_PHASE*.md`는 각 단계 당시의 결정 기록이며 현재 구조를
 대체하지 않습니다.
 
+## 테이프 주차구역 인식
+
+`scripts/tape_parking_camera.py`는 ArUco ID와 무관하게 빨간 테이프 외곽과 검은색
+경계 지지를 이용해 주차 사각형, 영상 중심점과 진입 방향을 계산합니다. 이 도구는
+관측 전용이며 ROS velocity 또는 로봇 제어 명령을 발행하지 않습니다.
+
+정지 이미지는 다음처럼 검사합니다. 검출 성공은 종료 코드 0과 `PARKING_FOUND`, 실패는
+종료 코드 2와 `PARKING_NOT_FOUND`로 보고합니다.
+
+~~~bash
+PYTHONPATH=. python3 scripts/tape_parking_camera.py --image /path/to/frame.png
+~~~
+
+Ubuntu USB 카메라는 아래처럼 실행합니다. 다섯 프레임 연속 검출된 경우에만 화면 상태가
+`STABLE`로 바뀝니다. `q` 또는 Esc로 종료합니다.
+
+~~~bash
+PYTHONPATH=. python3 scripts/tape_parking_camera.py \
+  --device /dev/video0 --width 640 --height 480 --fps 30 --display
+~~~
+
+macOS에서는 `--device 0`을 사용합니다. 기본 검출 문턱은 최소 영상 면적 8%, 신뢰도
+0.42입니다. 현장 조명에 맞춰 조정할 수 있지만, 로봇 이동과 연결하기 전에 카메라
+캘리브레이션, 실제 주차구역 크기, 로봇 외곽 여유와 검출 상실 시 정지 정책을 별도로
+검증해야 합니다.
+
 ## 보안과 데이터 주의사항
 
 - 제어 ARM과 대시보드 정지 해제는 PIN 없이 버튼으로 동작하며 전체 HTTP API에도
