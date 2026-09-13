@@ -640,6 +640,34 @@ Navigation이 active인 동안 다음 요청은 409로 차단됩니다.
    뒤 저장된 POI/HOME/DOCK/INSPECTION POINT의 `GO`를 사용할 수 있습니다.
 7. 이상 동작 시 먼저 CANCEL 또는 STOP을 누르고 물리 리모컨으로 정지합니다.
 
+### 최소 배달 데모
+
+Navigation을 STOP한 상태에서 선택한 지도에 다음 이름의 point annotation 네 개를
+저장합니다. 각 점은 위치를 누른 뒤 로봇이 도착할 방향으로 드래그합니다.
+
+1. `출발지`
+2. `픽업지`
+3. `배송지`
+4. `복귀지`
+
+그 다음 Robot Scope가 실행 중인 같은 Ubuntu 호스트에서 아래 명령을 실행합니다.
+스크립트는 필요한 경우 선택한 지도 revision으로 Nav2를 시작하고, 출발지를 초기
+위치로 설정한 뒤 픽업지 → 배송지 → 복귀지를 순서대로 전송합니다. 배송지의 기본
+정지 시간은 5초입니다.
+
+~~~bash
+python3 scripts/run_delivery_demo.py \
+  --base-url http://127.0.0.1:8088 \
+  --map Llllc \
+  --delivery-dwell 5
+~~~
+
+다른 annotation 이름을 썼다면 `--start`, `--pickup`, `--delivery`,
+`--return-point`로 지정합니다. `Ctrl-C` 또는 `SIGTERM`을 받으면 현재 목표를 먼저
+취소합니다. 완료 뒤 Nav2는 다음 확인 주행을 위해 실행 상태로 유지되며, 전체 종료는
+Navigation의 STOP을 사용합니다. 이 클라이언트는 `/cmd_vel`을 직접 발행하지 않고
+기존 지도·위치추정·제어 lease·watchdog 검사를 모두 통과한 목표만 전송합니다.
+
 파라미터 변경은 Navigation이 정지된 상태에서만 저장되며 다음 START부터 적용됩니다.
 브라우저가 보내는 값은 27개 allowlist와 교차 조건을 다시 검사합니다. PDF의
 `0.9 rad/s`, `2.0 rad/s²` 값은 현재 대시보드 하드 한계보다 높으므로 각각
